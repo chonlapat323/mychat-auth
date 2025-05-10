@@ -1,0 +1,7 @@
+[
+  {
+    "name": "MyChat Mongo",
+    "connection_string": "mongodb://mongo:27017/mychat",
+    "connection_options": {}
+  }
+]

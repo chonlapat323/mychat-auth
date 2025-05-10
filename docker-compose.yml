@@ -16,8 +16,13 @@ services:
     image: mongo
     ports:
       - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
     networks:
       - mychat-net
+
+volumes:
+  mongo-data: {}  # <--- ต้องประกาศตรงนี้ด้วย
 
 networks:
   mychat-net:
