@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   auth:
     build: .
@@ -7,8 +5,10 @@ services:
       - "4001:4001"
     environment:
       - MONGO_URL=mongodb://mongo:27017/mychat
+      - REDIS_URL=redis:6379
     depends_on:
       - mongo
+      - redis
     networks:
       - mychat-net
 
@@ -21,8 +21,15 @@ services:
     networks:
       - mychat-net
 
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - mychat-net
+
 volumes:
-  mongo-data: {}  # <--- ต้องประกาศตรงนี้ด้วย
+  mongo-data: {}
 
 networks:
   mychat-net:

@@ -5,6 +5,7 @@ import (
 	"log"
 	"mychat-auth/handlers"
 	"mychat-auth/middleware"
+	"mychat-auth/utils"
 	"net/http"
 
 	"github.com/joho/godotenv"
@@ -13,6 +14,7 @@ import (
 func main() {
 	// โหลดค่าจาก .env
 	err := godotenv.Load()
+	utils.InitRedis()
 	if err != nil {
 		log.Fatal("❌ ไม่พบไฟล์ .env หรือโหลดไม่สำเร็จ")
 	}
@@ -24,6 +26,7 @@ func main() {
 	http.HandleFunc("/register", handlers.RegisterHandler)
 	http.HandleFunc("/login", handlers.LoginHandler)
 	http.Handle("/me", middleware.JWTAuthMiddleware(http.HandlerFunc(handlers.MeHandler)))
+	http.Handle("/logout", middleware.JWTAuthMiddleware(http.HandlerFunc(handlers.LogoutHandler)))
 
 	port := ":4001"
 	fmt.Println("🚀 Auth service running at http://localhost" + port)

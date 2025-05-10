@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"mychat-auth/utils"
+	"mychat-auth/utils" // แก้ตาม module ของคุณ
 )
 
 type contextKey string
@@ -22,13 +22,24 @@ func JWTAuthMiddleware(next http.Handler) http.Handler {
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
+		// ✅ ตรวจว่าถูก blacklist หรือไม่
+		isBlacklisted, err := utils.IsTokenBlacklisted(tokenString)
+		if err != nil {
+			http.Error(w, "Server error", http.StatusInternalServerError)
+			return
+		}
+		if isBlacklisted {
+			http.Error(w, "Token revoked", http.StatusUnauthorized)
+			return
+		}
+
+		// ✅ ตรวจ token ตามปกติ
 		claims, err := utils.ValidateToken(tokenString)
 		if err != nil {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
 
-		// ใส่ user_id ใน context เพื่อใช้ต่อใน handler
 		ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
