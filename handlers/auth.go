@@ -4,32 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
-	"mychat-auth/middleware"
+	"mychat-auth/database"
 	"mychat-auth/models"
+	"mychat-auth/shared/contextkey"
 	"mychat-auth/types"
 	"mychat-auth/utils"
 
 	"github.com/go-playground/validator/v10"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-var userCollection *mongo.Collection
 var validate = validator.New()
-
-func InitMongo() {
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(os.Getenv("MONGO_URL")))
-	if err != nil {
-		panic(err)
-	}
-	userCollection = client.Database("mychat").Collection("users")
-}
 
 // RegisterHandler รับ POST /register
 func RegisterHandler(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +35,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check duplicate email
-	count, _ := userCollection.CountDocuments(context.TODO(), bson.M{"email": req.Email})
+	count, _ := database.UserCollection.CountDocuments(context.TODO(), bson.M{"email": req.Email})
 	if count > 0 {
 		http.Error(w, "Email already exists", http.StatusConflict)
 		return
@@ -62,7 +51,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	req.CreatedAt = time.Now()
 
 	// insert user
-	res, err := userCollection.InsertOne(context.TODO(), req)
+	res, err := database.UserCollection.InsertOne(context.TODO(), req)
 	if err != nil {
 		http.Error(w, "DB error", http.StatusInternalServerError)
 		return
@@ -72,8 +61,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	userID := res.InsertedID.(primitive.ObjectID).Hex()
 
 	// generate token
-	token, err := utils.GenerateToken(userID, req.Email)
-
+	token, err := utils.GenerateToken(userID, req.Email, req.Role)
 	if err != nil {
 		http.Error(w, "Token error", http.StatusInternalServerError)
 		return
@@ -93,22 +81,19 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ค้นหาผู้ใช้จาก email
 	var user models.User
-	err := userCollection.FindOne(context.TODO(), bson.M{"email": req.Email}).Decode(&user)
+	err := database.UserCollection.FindOne(context.TODO(), bson.M{"email": req.Email}).Decode(&user)
 	if err != nil {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
 
-	// เช็ค password
 	if !utils.CheckPassword(req.Password, user.Password) {
 		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
 		return
 	}
 
-	// สร้าง JWT
-	token, err := utils.GenerateToken(user.ID.Hex(), user.Email)
+	token, err := utils.GenerateToken(user.ID.Hex(), user.Email, user.Role)
 	if err != nil {
 		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
 		return
@@ -120,14 +105,14 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func MeHandler(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value(middleware.UserIDKey).(string)
+	userID, ok := r.Context().Value(contextkey.UserID).(string)
 	if !ok || userID == "" {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	var user models.User
-	err := userCollection.FindOne(context.TODO(), bson.M{"_id": models.StringToObjectID(userID)}).Decode(&user)
+	err := database.UserCollection.FindOne(context.TODO(), bson.M{"_id": models.StringToObjectID(userID)}).Decode(&user)
 	if err != nil {
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
@@ -153,14 +138,12 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	token := strings.TrimPrefix(authHeader, "Bearer ")
 
-	// ตรวจว่า token ถูกต้องก่อน
 	claims, err := utils.ValidateToken(token)
 	if err != nil {
 		http.Error(w, "Invalid token", http.StatusUnauthorized)
 		return
 	}
 
-	// บันทึกลง Redis blacklist พร้อมระยะเวลาหมดอายุ
 	if err := utils.BlacklistToken(token, claims.ExpiresAt.Time); err != nil {
 		http.Error(w, "Failed to logout", http.StatusInternalServerError)
 		return

@@ -2,15 +2,13 @@ package middleware
 
 import (
 	"context"
+	"mychat-auth/shared/contextkey"
+	"mychat-auth/utils"
 	"net/http"
 	"strings"
-
-	"mychat-auth/utils" // แก้ตาม module ของคุณ
 )
 
 type contextKey string
-
-const UserIDKey contextKey = "user_id"
 
 func JWTAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +38,7 @@ func JWTAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
+		ctx := context.WithValue(r.Context(), contextkey.UserID, claims.UserID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

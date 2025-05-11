@@ -12,16 +12,18 @@ import (
 type Claims struct {
 	UserID string `json:"user_id"`
 	Email  string `json:"email"`
+	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
 // GenerateToken สร้าง JWT token สำหรับผู้ใช้คนหนึ่ง
-func GenerateToken(userID, email string) (string, error) {
+func GenerateToken(userID, email string, role string) (string, error) {
 	secret := os.Getenv("JWT_SECRET")
 	expire := time.Now().Add(24 * time.Hour) // default: 24h
 	claims := Claims{
 		UserID: userID,
 		Email:  email,
+		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expire),
 		},
