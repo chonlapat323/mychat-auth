@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strings"
 	"time"
 
 	"mychat-auth/database"
@@ -50,6 +49,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	req.Password = hashedPwd
 	req.CreatedAt = time.Now()
 
+	req.Role = "member"
 	// insert user
 	res, err := database.UserCollection.InsertOne(context.TODO(), req)
 	if err != nil {
@@ -57,50 +57,68 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ดึง ObjectID กลับมา แล้วแปลงเป็น string
 	userID := res.InsertedID.(primitive.ObjectID).Hex()
 
-	// generate token
-	token, err := utils.GenerateToken(userID, req.Email, req.Role)
-	if err != nil {
-		http.Error(w, "Token error", http.StatusInternalServerError)
-		return
-	}
-
-	// return token
+	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"token": token,
+		"userID": userID,
 	})
 }
 
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
 	var req models.User
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Invalid request format",
+		})
 		return
 	}
 
 	var user models.User
 	err := database.UserCollection.FindOne(context.TODO(), bson.M{"email": req.Email}).Decode(&user)
+	if err != nil || !utils.CheckPassword(req.Password, user.Password) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Invalid email or password",
+		})
+		return
+	}
+
+	accessToken, refreshToken, err := utils.GenerateTokens(user.ID.Hex(), user.Email, user.Role)
 	if err != nil {
-		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Failed to generate token",
+		})
 		return
 	}
 
-	if !utils.CheckPassword(req.Password, user.Password) {
-		http.Error(w, "Invalid email or password", http.StatusUnauthorized)
-		return
-	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "token",
+		Value:    accessToken,
+		HttpOnly: true,
+		Path:     "/",
+		Expires:  time.Now().Add(1 * time.Minute),
+		Secure:   false,
+		SameSite: http.SameSiteStrictMode,
+	})
 
-	token, err := utils.GenerateToken(user.ID.Hex(), user.Email, user.Role)
-	if err != nil {
-		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
-		return
-	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    refreshToken,
+		HttpOnly: true,
+		Path:     "/",
+		Expires:  time.Now().Add(7 * 24 * time.Hour),
+		Secure:   false,
+		SameSite: http.SameSiteStrictMode,
+	})
 
-	json.NewEncoder(w).Encode(map[string]string{
-		"token": token,
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
 	})
 }
 
@@ -130,26 +148,63 @@ func MeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func LogoutHandler(w http.ResponseWriter, r *http.Request) {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-		http.Error(w, "Missing token", http.StatusUnauthorized)
+	cookie, err := r.Cookie("token")
+	if err != nil || cookie.Value == "" {
+		http.Error(w, "No token to logout", http.StatusBadRequest)
 		return
 	}
 
-	token := strings.TrimPrefix(authHeader, "Bearer ")
-
-	claims, err := utils.ValidateToken(token)
-	if err != nil {
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
-		return
+	// แบล็คลิสต์ token ตามเดิม (optional)
+	claims, err := utils.ValidateToken(cookie.Value)
+	if err == nil {
+		_ = utils.BlacklistToken(cookie.Value, claims.ExpiresAt.Time) // ไม่ต้อง panic ถ้า error
 	}
 
-	if err := utils.BlacklistToken(token, claims.ExpiresAt.Time); err != nil {
-		http.Error(w, "Failed to logout", http.StatusInternalServerError)
-		return
-	}
+	// ✅ ลบ cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteStrictMode,
+	})
 
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "Logged out successfully",
 	})
+}
+
+func RefreshHandler(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("refresh_token")
+	if err != nil {
+		http.Error(w, "Missing refresh token", http.StatusUnauthorized)
+		return
+	}
+
+	claims, err := utils.ValidateToken(cookie.Value)
+	if err != nil {
+		http.Error(w, "Invalid refresh token", http.StatusUnauthorized)
+		return
+	}
+
+	// Generate access token ใหม่
+	accessToken, _, err := utils.GenerateTokens(claims.UserID, claims.Email, claims.Role)
+	if err != nil {
+		http.Error(w, "Token generation failed", http.StatusInternalServerError)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "token",
+		Value:    accessToken,
+		HttpOnly: true,
+		Path:     "/",
+		Expires:  claims.ExpiresAt.Time,
+		Secure:   false,
+		SameSite: http.SameSiteStrictMode,
+	})
+
+	w.WriteHeader(http.StatusOK)
 }

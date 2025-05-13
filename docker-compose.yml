@@ -1,24 +1,18 @@
+version: '3.8'
+
 services:
   auth:
     build: .
     ports:
       - "4001:4001"
+    env_file:
+      - .env
     environment:
-      - MONGO_URL=mongodb://mongo:27017/mychat
+      - MONGO_URL=mongodb://shared-mongo:27017/mychat
       - REDIS_URL=redis:6379
       - JWT_SECRET=your-super-secret-key
     depends_on:
-      - mongo
       - redis
-    networks:
-      - mychat-net
-
-  mongo:
-    image: mongo
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo-data:/data/db
     networks:
       - mychat-net
 
@@ -28,9 +22,6 @@ services:
       - "6379:6379"
     networks:
       - mychat-net
-
-volumes:
-  mongo-data: {}
 
 networks:
   mychat-net:

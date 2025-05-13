@@ -17,19 +17,38 @@ type Claims struct {
 }
 
 // GenerateToken สร้าง JWT token สำหรับผู้ใช้คนหนึ่ง
-func GenerateToken(userID, email string, role string) (string, error) {
+func GenerateTokens(userID, email, role string) (accessToken string, refreshToken string, err error) {
 	secret := os.Getenv("JWT_SECRET")
-	expire := time.Now().Add(24 * time.Hour) // default: 24h
-	claims := Claims{
+
+	// Access Token: อายุสั้น
+	accessExpire := time.Now().Add(15 * time.Minute)
+	accessClaims := Claims{
 		UserID: userID,
 		Email:  email,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(expire),
+			ExpiresAt: jwt.NewNumericDate(accessExpire),
 		},
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(secret))
+	at := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
+	accessToken, err = at.SignedString([]byte(secret))
+	if err != nil {
+		return
+	}
+
+	// Refresh Token: อายุยาว
+	refreshExpire := time.Now().Add(7 * 24 * time.Hour)
+	refreshClaims := Claims{
+		UserID: userID,
+		Email:  email,
+		Role:   role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(refreshExpire),
+		},
+	}
+	rt := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
+	refreshToken, err = rt.SignedString([]byte(secret))
+	return
 }
 
 // ValidateToken ถอดรหัสและตรวจสอบ JWT token

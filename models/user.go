@@ -10,7 +10,7 @@ type User struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	Email     string             `bson:"email" validate:"required,email"`
 	Password  string             `bson:"password" validate:"required,min=6"`
-	Role      string             `bson:"role" json:"role" validate:"required,oneof=admin member"`
+	Role      string             `bson:"role" json:"-"`
 	ImageURL  string             `bson:"image_url" json:"image_url"`
 	CreatedAt time.Time          `bson:"created_at"`
 }

@@ -5,20 +5,19 @@ import (
 	"mychat-auth/shared/contextkey"
 	"mychat-auth/utils"
 	"net/http"
-	"strings"
 )
 
 type contextKey string
 
 func JWTAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		cookie, err := r.Cookie("token")
+		if err != nil || cookie.Value == "" {
 			http.Error(w, "Missing or invalid token", http.StatusUnauthorized)
 			return
 		}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		tokenString := cookie.Value
 
 		// ✅ ตรวจว่าถูก blacklist หรือไม่
 		isBlacklisted, err := utils.IsTokenBlacklisted(tokenString)
@@ -31,7 +30,6 @@ func JWTAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// ✅ ตรวจ token ตามปกติ
 		claims, err := utils.ValidateToken(tokenString)
 		if err != nil {
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
