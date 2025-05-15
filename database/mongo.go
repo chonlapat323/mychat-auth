@@ -13,6 +13,7 @@ import (
 var Client *mongo.Client
 var UserCollection *mongo.Collection
 var RoomCollection *mongo.Collection
+var MessageCollection *mongo.Collection
 
 func InitMongo() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -27,6 +28,7 @@ func InitMongo() {
 	db := Client.Database("mychat")
 	UserCollection = db.Collection("users")
 	RoomCollection = db.Collection("rooms")
+	MessageCollection = db.Collection("messages")
 
 	log.Println("✅ Connected to MongoDB and initialized collections")
 }

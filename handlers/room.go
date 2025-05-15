@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"mychat-auth/database"
 	"mychat-auth/models"
 	"mychat-auth/shared/contextkey"
@@ -38,14 +39,13 @@ func GetRoomsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateRoomHandler(w http.ResponseWriter, r *http.Request) {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+	tokenCookie, err := r.Cookie("token")
+	if err != nil || tokenCookie.Value == "" {
 		http.Error(w, "Missing token", http.StatusUnauthorized)
 		return
 	}
 
-	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-	claims, err := utils.ValidateToken(tokenStr)
+	claims, err := utils.ValidateToken(tokenCookie.Value)
 	if err != nil {
 		http.Error(w, "Invalid token", http.StatusUnauthorized)
 		return
@@ -73,11 +73,24 @@ func CreateRoomHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	creatorID, err := primitive.ObjectIDFromHex(claims.UserID)
+	if err != nil {
+		http.Error(w, "Invalid user ID in token", http.StatusUnauthorized)
+		return
+	}
+
+	var creator models.User
+	err = database.UserCollection.FindOne(context.TODO(), bson.M{"_id": creatorID}).Decode(&creator)
+	if err != nil {
+		http.Error(w, "Failed to load creator user", http.StatusInternalServerError)
+		return
+	}
+
+	safeCreator := creator.ToSafeUser()
+
 	req.ID = primitive.NewObjectID()
 	req.CreatedAt = time.Now()
-	if req.Type == "public" {
-		req.Members = []primitive.ObjectID{}
-	}
+	req.Members = []models.SafeUser{safeCreator}
 
 	_, err = database.RoomCollection.InsertOne(context.TODO(), req)
 	if err != nil {
@@ -107,22 +120,59 @@ func JoinRoomHandler(w http.ResponseWriter, r *http.Request) {
 
 	userObjID := models.StringToObjectID(userID)
 
-	filter := bson.M{
-		"_id":     roomObjID,
-		"type":    "private",
-		"members": bson.M{"$ne": userObjID},
+	var user models.User
+	err = database.UserCollection.FindOne(context.TODO(), bson.M{"_id": userObjID}).Decode(&user)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
 	}
 
-	update := bson.M{
-		"$push": bson.M{"members": userObjID},
-	}
+	safeUser := user.ToSafeUser()
+
+	filter := bson.M{"_id": roomObjID}
+	update := bson.M{"$addToSet": bson.M{"members": safeUser}}
 
 	res, err := database.RoomCollection.UpdateOne(context.TODO(), filter, update)
-	if err != nil || res.ModifiedCount == 0 {
-		http.Error(w, "Unable to join room", http.StatusBadRequest)
+	if err != nil {
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+
+	if res.MatchedCount == 0 {
+		http.Error(w, "Room not found", http.StatusNotFound)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Joined room"})
+}
+
+func GetRoomMessagesHandler(w http.ResponseWriter, r *http.Request) {
+	roomIDStr := strings.TrimPrefix(r.URL.Path, "/rooms/")
+	roomIDStr = strings.TrimSuffix(roomIDStr, "/messages")
+
+	filter := bson.M{"room_id": roomIDStr}
+	log.Println("🧾 MongoDB filter:", filter)
+
+	cursor, err := database.MessageCollection.Find(context.TODO(), filter)
+	if err != nil {
+		log.Println("❌ Failed to fetch messages:", err)
+		http.Error(w, "Failed to fetch messages", http.StatusInternalServerError)
+		return
+	}
+
+	var messages []models.Message
+	if err := cursor.All(context.TODO(), &messages); err != nil {
+		log.Println("❌ Failed to decode messages:", err)
+		http.Error(w, "Failed to decode messages", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("✅ Messages fetched: %d\n", len(messages))
+	for _, msg := range messages {
+		log.Printf("📨 [%s] %s\n", msg.SenderID.Hex(), msg.Content)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(messages)
 }

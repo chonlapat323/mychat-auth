@@ -55,7 +55,7 @@ func SeedRoom() {
 	room := models.Room{
 		Name:      "general",
 		Type:      "public",
-		Members:   []primitive.ObjectID{},
+		Members:   []models.SafeUser{},
 		CreatedAt: time.Now(),
 	}
 

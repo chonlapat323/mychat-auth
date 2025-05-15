@@ -16,11 +16,9 @@ import (
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-
+		log.Println("🔥 CORS Middleware:", r.URL.Path)
 		if origin != "" {
-			if origin == "http://localhost:3000" {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-			}
+			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -57,21 +55,34 @@ func main() {
 	http.Handle("/me", corsMiddleware(middleware.JWTAuthMiddleware(http.HandlerFunc(handlers.MeHandler))))
 	http.Handle("/logout", corsMiddleware(middleware.JWTAuthMiddleware(http.HandlerFunc(handlers.LogoutHandler))))
 	http.Handle("/auth/refresh", corsMiddleware(http.HandlerFunc(handlers.RefreshHandler)))
-
-	http.HandleFunc("/rooms", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/join/") {
-			middleware.JWTAuthMiddleware(http.HandlerFunc(handlers.JoinRoomHandler)).ServeHTTP(w, r)
-			return
-		}
+	http.Handle("/api/users", corsMiddleware(middleware.JWTAuthMiddleware(http.HandlerFunc(handlers.UsersHandler))))
+	http.Handle("/rooms", corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			handlers.GetRoomsHandler(w, r)
 		case http.MethodPost:
-			middleware.RequireAdmin(handlers.CreateRoomHandler)(w, r)
+			// ใช้ middleware ตรวจ role admin
+			middleware.RequireAdmin(http.HandlerFunc(handlers.CreateRoomHandler)).ServeHTTP(w, r)
 		default:
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
-	})
+	})))
+	http.Handle("/rooms/", corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		log.Println("📡 Routed:", path)
+
+		if strings.HasSuffix(path, "/messages") && r.Method == http.MethodGet {
+			middleware.JWTAuthMiddleware(http.HandlerFunc(handlers.GetRoomMessagesHandler)).ServeHTTP(w, r)
+			return
+		}
+
+		if strings.HasSuffix(path, "/join") && r.Method == http.MethodPost {
+			middleware.JWTAuthMiddleware(http.HandlerFunc(handlers.JoinRoomHandler)).ServeHTTP(w, r)
+			return
+		}
+
+		http.Error(w, "Not Found", http.StatusNotFound)
+	})))
 
 	http.HandleFunc("/ws", handlers.WebSocketHandler)
 

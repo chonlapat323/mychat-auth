@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"mychat-auth/database"
@@ -141,6 +142,8 @@ func MeHandler(w http.ResponseWriter, r *http.Request) {
 	safeUser := types.SafeUser{
 		ID:        user.ID,
 		Email:     user.Email,
+		ImageURL:  user.ImageURL,
+		Role:      user.Role,
 		CreatedAt: user.CreatedAt,
 	}
 
@@ -171,6 +174,16 @@ func LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteStrictMode,
 	})
 
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refresh_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteStrictMode,
+	})
+
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "Logged out successfully",
 	})
@@ -188,7 +201,6 @@ func RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid refresh token", http.StatusUnauthorized)
 		return
 	}
-
 	// Generate access token ใหม่
 	accessToken, _, err := utils.GenerateTokens(claims.UserID, claims.Email, claims.Role)
 	if err != nil {
@@ -207,4 +219,40 @@ func RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func UsersHandler(w http.ResponseWriter, r *http.Request) {
+	idsParam := r.URL.Query().Get("ids")
+	if idsParam == "" {
+		http.Error(w, "Missing ids parameter", http.StatusBadRequest)
+		return
+	}
+
+	idList := strings.Split(idsParam, ",")
+
+	// สร้าง filter: {"id": {"$in": [id1, id2, id3]}}
+	filter := bson.M{
+		"id": bson.M{
+			"$in": idList,
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := database.UserCollection.Find(ctx, filter)
+	if err != nil {
+		http.Error(w, "Error fetching users", http.StatusInternalServerError)
+		return
+	}
+	defer cursor.Close(ctx)
+
+	var users []bson.M
+	if err := cursor.All(ctx, &users); err != nil {
+		http.Error(w, "Error decoding users", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(users)
 }
