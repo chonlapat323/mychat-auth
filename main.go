@@ -84,7 +84,7 @@ func main() {
 		http.Error(w, "Not Found", http.StatusNotFound)
 	})))
 
-	http.HandleFunc("/ws", handlers.WebSocketHandler)
+	http.Handle("/ws", corsMiddleware(http.HandlerFunc(handlers.WebSocketHandler)))
 
 	port := ":4001"
 	fmt.Println("Auth service running at http://localhost" + port)

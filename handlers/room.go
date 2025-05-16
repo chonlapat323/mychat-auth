@@ -150,8 +150,13 @@ func JoinRoomHandler(w http.ResponseWriter, r *http.Request) {
 func GetRoomMessagesHandler(w http.ResponseWriter, r *http.Request) {
 	roomIDStr := strings.TrimPrefix(r.URL.Path, "/rooms/")
 	roomIDStr = strings.TrimSuffix(roomIDStr, "/messages")
+	roomID, err := primitive.ObjectIDFromHex(roomIDStr)
+	if err != nil {
+		http.Error(w, "Invalid room ID", http.StatusBadRequest)
+		return
+	}
 
-	filter := bson.M{"room_id": roomIDStr}
+	filter := bson.M{"room_id": roomID}
 	log.Println("🧾 MongoDB filter:", filter)
 
 	cursor, err := database.MessageCollection.Find(context.TODO(), filter)
