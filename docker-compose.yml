@@ -8,7 +8,7 @@ services:
     env_file:
       - .env
     environment:
-      - MONGO_URL=mongodb://shared-mongo:27017/mychat
+      - MONGO_URI=mongodb://shared-mongo:27017/mychat
       - REDIS_URL=redis:6379
       - JWT_SECRET=your-super-secret-key
     depends_on:
