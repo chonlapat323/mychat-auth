@@ -24,17 +24,17 @@ func JWTAuthMiddleware(next http.Handler) http.Handler {
 		tokenString := cookie.Value
 		log.Println("🧪 Token received:", tokenString[:10], "...")
 
-		isBlacklisted, err := utils.IsTokenBlacklisted(tokenString)
-		if err != nil {
-			log.Println("❌ Redis check failed:", err)
-			http.Error(w, "Server error", http.StatusInternalServerError)
-			return
-		}
-		if isBlacklisted {
-			log.Println("🚫 Token is blacklisted")
-			http.Error(w, "Token revoked", http.StatusUnauthorized)
-			return
-		}
+		// isBlacklisted, err := utils.IsTokenBlacklisted(tokenString)
+		// if err != nil {
+		// 	log.Println("❌ Redis check failed:", err)
+		// 	http.Error(w, "Server error", http.StatusInternalServerError)
+		// 	return
+		// }
+		// if isBlacklisted {
+		// 	log.Println("🚫 Token is blacklisted")
+		// 	http.Error(w, "Token revoked", http.StatusUnauthorized)
+		// 	return
+		// }
 
 		claims, err := utils.ValidateToken(tokenString)
 		if err != nil {
