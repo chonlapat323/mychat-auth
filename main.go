@@ -37,15 +37,17 @@ func main() {
 	// โหลดค่าจาก .env
 	if os.Getenv("APP_ENV") != "production" {
 		err := godotenv.Load()
-		utils.InitRedis()
+
 		if err != nil {
 			log.Fatal("ไม่พบไฟล์ .env หรือโหลดไม่สำเร็จ")
 		}
 	}
-
+	log.Println("🔐 JWT_SECRET =", os.Getenv("JWT_SECRET"))
+	log.Println("🧠 MONGO_URI  =", os.Getenv("MONGO_URI"))
+	log.Println("🔁 REDIS_URL =", os.Getenv("REDIS_URL"))
 	// เชื่อม MongoDB
 	database.InitMongo()
-
+	utils.InitRedis()
 	// สร้าง route เฉพาะที่เกี่ยวกับ Auth และ User Management
 	http.Handle("/register", corsMiddleware(http.HandlerFunc(handlers.RegisterHandler)))
 	http.Handle("/login", corsMiddleware(http.HandlerFunc(handlers.LoginHandler)))
