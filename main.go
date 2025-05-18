@@ -8,6 +8,7 @@ import (
 	"mychat-auth/middleware"
 	"mychat-auth/utils"
 	"net/http"
+	"os"
 
 	"github.com/joho/godotenv"
 )
@@ -34,10 +35,12 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 func main() {
 	// โหลดค่าจาก .env
-	err := godotenv.Load()
-	utils.InitRedis()
-	if err != nil {
-		log.Fatal("ไม่พบไฟล์ .env หรือโหลดไม่สำเร็จ")
+	if os.Getenv("APP_ENV") != "production" {
+		err := godotenv.Load()
+		utils.InitRedis()
+		if err != nil {
+			log.Fatal("ไม่พบไฟล์ .env หรือโหลดไม่สำเร็จ")
+		}
 	}
 
 	// เชื่อม MongoDB
