@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -13,7 +14,9 @@ var ctx = context.Background()
 var RedisClient *redis.Client
 
 func InitRedis() {
+
 	url := os.Getenv("REDIS_URL") // จาก docker-compose
+	fmt.Println("🔧 REDIS_URL:", url)
 	RedisClient = redis.NewClient(&redis.Options{
 		Addr: url,
 	})
