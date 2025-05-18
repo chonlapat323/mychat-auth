@@ -29,6 +29,7 @@ func InitMongo() {
 	UserCollection = db.Collection("users")
 	RoomCollection = db.Collection("rooms")
 	MessageCollection = db.Collection("messages")
-
+	log.Println("🧪 Mongo URI:", os.Getenv("MONGO_URI"))
+	log.Println("🧪 Using DB:", db.Name())
 	log.Println("✅ Connected to MongoDB and initialized collections")
 }

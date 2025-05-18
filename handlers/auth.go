@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -22,43 +23,58 @@ var validate = validator.New()
 
 // RegisterHandler รับ POST /register
 func RegisterHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("📥 RegisterHandler called")
+
 	var req models.User
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Println("❌ Failed to decode body:", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	// validate email/password
+	// ✅ Validate input
 	if err := validate.Struct(req); err != nil {
+		log.Println("❌ Validation error:", err)
 		http.Error(w, "Invalid input: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// check duplicate email
-	count, _ := database.UserCollection.CountDocuments(context.TODO(), bson.M{"email": req.Email})
+	log.Println("🔍 Checking duplicate email:", req.Email)
+	count, err := database.UserCollection.CountDocuments(context.TODO(), bson.M{"email": req.Email})
+	if err != nil {
+		log.Println("❌ DB count error:", err)
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
 	if count > 0 {
+		log.Println("⚠️ Email already exists")
 		http.Error(w, "Email already exists", http.StatusConflict)
 		return
 	}
 
-	// hash password
+	// ✅ Hash password
+	log.Println("🔐 Hashing password...")
 	hashedPwd, err := utils.HashPassword(req.Password)
 	if err != nil {
+		log.Println("❌ Password hash error:", err)
 		http.Error(w, "Hash error", http.StatusInternalServerError)
 		return
 	}
 	req.Password = hashedPwd
 	req.CreatedAt = time.Now()
-
 	req.Role = "member"
-	// insert user
+
+	// ✅ Insert user
+	log.Println("📝 Inserting new user into DB:", req.Email)
 	res, err := database.UserCollection.InsertOne(context.TODO(), req)
 	if err != nil {
+		log.Println("❌ Insert DB error:", err)
 		http.Error(w, "DB error", http.StatusInternalServerError)
 		return
 	}
 
 	userID := res.InsertedID.(primitive.ObjectID).Hex()
+	log.Println("✅ User created with ID:", userID)
 
 	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
