@@ -105,7 +105,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, refreshToken, err := utils.GenerateTokens(user.ID.Hex(), user.Email, user.Role)
+	accessToken, refreshToken, err := utils.GenerateTokens(user.ID.Hex(), user.Email, user.Role, user.ImageURL)
 	if err != nil {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"success": false,
@@ -222,7 +222,7 @@ func RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Generate access token ใหม่
-	accessToken, _, err := utils.GenerateTokens(claims.UserID, claims.Email, claims.Role)
+	accessToken, _, err := utils.GenerateTokens(claims.UserID, claims.Email, claims.Role, claims.ImageURL)
 	if err != nil {
 		http.Error(w, "Token generation failed", http.StatusInternalServerError)
 		return
